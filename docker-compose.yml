@@ -1,16 +1,14 @@
-version: '3.1'
+version: '3.6'
 
 services:
   otusdb:
-    image: mysql:8.0.15
+    image: mysql:8.0.18
     environment:
       - MYSQL_ROOT_PASSWORD=12345
-    command: 
-      --init-file /init.sql
     volumes:
-      - data:/var/lib/mysql
-      - ./init.sql:/init.sql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - ./custom.conf:/etc/mysql/conf.d
+      - data:/var/lib/mysql
     expose:
       - "3306"
     ports:
