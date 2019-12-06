@@ -1,0 +1,32 @@
+1.Команда на выполнение
+sysbench /usr/share/sysbench/oltp_read_write.lua --threads=8 --mysql-host=192.168.99.105 --mysql-user=root 
+--mysql-password=12345 --mysql-port=3309  --mysql-db=customers --tables=4 --table-size=1000000  --delete_inserts=4
+--index_updates=4 --non_index_updates=4 --db-ps-mode=disable run
+
+SQL statistics:
+    queries performed:
+        read:                            52990
+        write:                           60560
+        other:                           7570
+        total:                           121120
+    transactions:                        3785   (37.79 per sec.)
+    queries:                             121120 (1209.20 per sec.)
+    ignored errors:                      0      (0.00 per sec.)
+    reconnects:                          0      (0.00 per sec.)
+
+General statistics:
+    total time:                          100.1637s
+    total number of events:              3785
+
+Latency (ms):
+         min:                                   97.65
+         avg:                                  211.58
+         max:                                  541.85
+         95th percentile:                      314.45
+         sum:                               800838.63
+
+Threads fairness:
+    events (avg/stddev):           473.1250/4.40
+    execution time (avg/stddev):   100.1048/0.04
+
+
