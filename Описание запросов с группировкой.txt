@@ -1,0 +1,70 @@
+  1.Запросы находяться в следующих 'вьюхах':cat_count_minmax_prices,phones_colors_count,phones_color_rate.
+  2.cat_count_minmax_prices - возвращает по всем категориям число товаров(предложений),цену на самый дорогой товар,
+на самый дешевый для конкретной категории и полное название этой категории,поскольку категория имеет древовидную структуру.Для получения полного названия используется функция CTE - get_path_by_id.Тело запроса,
+   "SELECT DISTINCT
+        SUM(`t1`.`Cnt`) AS `К-во предложений`,
+        MAX(`t1`.`Mx`) AS `Макс,₽`,
+        MIN(`t1`.`Mn`) AS `Мин,₽`,
+        IF(GROUPING(`t1`.`cat_name`),
+            'Все категории',
+            `t1`.`cat_name`) AS `Категория`
+    FROM
+        (SELECT 
+            `t`.`Cnt` AS `Cnt`,
+                `t`.`Mx` AS `Mx`,
+                `t`.`Mn` AS `Mn`,
+                GET_PATH_BY_ID(`t`.`cat_id`) AS `cat_name`
+        FROM
+            (SELECT 
+            `prod`.`category_id` AS `cat_id`,
+                COUNT(`prod`.`product_id`) AS `Cnt`,
+                MAX(`prices`.`amount_base`) AS `Mx`,
+                MIN(`prices`.`amount_base`) AS `Mn`
+        FROM
+            ((`prices`
+        JOIN `products` `prod` ON ((`prod`.`last_price_id` = `prices`.`product_id`)))
+        JOIN `categorys` `cat` ON ((`cat`.`category_id` = `prod`.`category_id`)))
+        GROUP BY `prod`.`category_id`) `t`) `t1`
+    GROUP BY `t1`.`cat_name` , `t1`.`Cnt` WITH ROLLUP
+    HAVING (MAX(`t1`.`Mx`) <> MIN(`t1`.`Mn`))
+    ORDER BY `t1`.`Cnt` DESC" 
+Здесь во внутреннем запросе(t) выполняем группировку по id категории(целочисленный тип) и вызываем сооответствующие агрегатные ф-ции,далее средний запрос(1) ретранслирует агрегатные поля в внешний и добавляет поле `cat_name`,которое
+содержит полное название категории.Это сделано для оптимитизации группировка по целочисленному быстрее чем по строке.А в внешем запросе выполняем уже группировку по `cat_name` и `cnt` с rollup для получения итговой строки.
+И в конце делаем фильтрацию с having и сортировку по `Cnt` в обратном порядке.В grouping вместо case ... end  используется if(...).
+  3.phones_colors_count - создает отчет по цветам мобильных телефонов,которые предлагают разные производители,т.е выводятся цвет мб. т-на,названия производителей,которые имеют в производстве данный цвет и общее число марок т-нов ,котрые имеют данный цвет.Тело запроса,
+    "SELECT 
+        IF(GROUPING(JSON_EXTRACT(`prod`.`propertys`, '$.color')),
+            'Все цвета',
+            JSON_EXTRACT(`prod`.`propertys`, '$.color')) AS `Цвет`,
+        GROUP_CONCAT(DISTINCT `m`.`manufacturer`
+            SEPARATOR ',') AS `Производитель(и)`,
+        COUNT(JSON_EXTRACT(`prod`.`propertys`, '$.color')) AS `Количетво`
+    FROM
+        ((`products` `prod`
+        JOIN `manufacturers` `m` ON ((`prod`.`manufacturer_id` = `m`.`manufacturer_id`)))
+        JOIN `categorys` `cat` ON ((`cat`.`category_id` = `prod`.`category_id`)))
+    WHERE
+        (`cat`.`category_id` = GET_ID_BY_PATH('Мобильные и связь\\Мобильные и аксессуары\\Мобильные телефоны'))
+    GROUP BY JSON_EXTRACT(`prod`.`propertys`, '$.color') , `m`.`manufacturer` WITH ROLLUP
+    HAVING (GROUPING(`m`.`manufacturer`) = 1)"
+В этом запросе работаем с json_extract(в json цвет положили) и group_concat,которая аккумулирует названия производителей, причем с удалением ранее присутствующих(distinct),т.к group by выполняется по цвету и произвоителям. В конце пименяем having для удаления rollup с производителями используя grouping. В итоговой строке заменяем null на 'Все цвета',а поле `Производитель(и)` теперь содержит названия всех производителей через запятую. 
+  4.phones_color_rate - возвращает долю предложений мб. т-ов определенного цвета в процентах от общего числа всех предложений.Выводятся только с долей больше 5 %.Тело запроса,
+    "select 
+       color as 'Цвет',rate as 'Доля,%' from(select T.color as color,T.cnt*100/T.total_cnt as rate  
+     from  
+        (select 
+              json_extract(propertys,'$.color') as color,
+              count(json_extract(propertys,'$.color')) as cnt,
+              max(count(json_extract(propertys,'$.color'))) over() as total_cnt
+     from  
+        products as prod
+        join manufacturers as m on prod.manufacturer_id=m.manufacturer_id
+        join categorys as cat on cat.category_id=prod.category_id
+     where cat.category_id=get_id_by_path('Мобильные и связь\\Мобильные и аксессуары\\Мобильные телефоны')
+     group by json_extract(propertys,'$.color') with rollup  )T  )T1
+   where not isnull(color) and rate > 5.0
+   order by rate desc"
+Здесь я решил дополнительно поработать для получения отчета с относительными показателями и применил оконную ф-цию 
+over к агрегатной max для количества марок т-ов определенного цвета - это дает новый столбец в котором находятся общее число телефонов,его-то я использую в внешнем запросе для получения доли предложений конкретного цвета от общего числа предложений.В внешнем запросе использую where для отсечения долей меньше  или равно 5,0 %.Можно допустим с limit 5 вывести 5 топовых цветов.Это топовые цвета производителей. rollup нужен чтоб получить общее число телефонов, а вытаскиваю я его как раз с помощью over(). 
+
+
